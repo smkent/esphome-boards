@@ -1,0 +1,301 @@
+substitutions:
+  device: "cwww"
+  name: "CWWW LED Driver"
+
+packages:
+  base: !include ../../base/network-device.yaml
+  mcu: !include ../../mcu/esp32c3-arduino.yaml
+  pwm_status_led: !include
+    file: ../../packages/pwm_status_led.yaml
+    vars:
+      pin: GPIO2
+
+spi: !remove
+
+sensor:
+- id: light_encoder
+  platform: rotary_encoder
+  name: "Rotary Encoder"
+  internal: true
+  min_value: 0
+  max_value: 1
+  pin_a:
+    number: GPIO4
+    mode:
+      input: true
+      pullup: true
+  pin_b:
+    number: GPIO3
+    mode:
+      input: true
+      pullup: true
+  publish_initial_value: true
+  on_clockwise:
+  - logger.log: "Rotary Encoder Turned Clockwise"
+  - script.execute:
+      id: light_control
+      clockwise: !lambda "return !id(rotary_encoder_invert).state;"
+  on_anticlockwise:
+  - logger.log: "Rotary Encoder Turned Anticlockwise"
+  - script.execute:
+      id: light_control
+      clockwise: !lambda "return id(rotary_encoder_invert).state;"
+- id: power
+  platform: ina226
+  shunt_resistance: 0.02 ohm
+  update_interval: 60s
+  current:
+    id: power_current
+    name: "INA226 Current"
+  power:
+    id: power_watts
+    name: "INA226 Power"
+  bus_voltage:
+    id: power_voltage
+    name: "INA226 Bus Voltage"
+  shunt_voltage:
+    id: power_shunt_voltage
+    name: "INA226 Shunt Voltage"
+
+binary_sensor:
+- platform: gpio
+  name: "Rotary Rotary Encoder Button"
+  internal: true
+  pin:
+    number: GPIO21
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  on_multi_click:
+  - timing:
+    - ON for at least 500ms
+    then:
+    - script.execute:
+        id: set_control_mode
+        new_mode: !lambda "return !id(control_mode);"
+  - timing:
+    - ON for at most 500ms
+    - OFF for at least 50ms
+    then:
+    - light.toggle: cwww_light
+
+output:
+- id: led_ww_out
+  platform: ledc
+  pin: GPIO0
+- id: led_cw_out
+  platform: ledc
+  pin: GPIO1
+
+light:
+- id: cwww_light
+  platform: cwww
+  name: "CWWW Light"
+  cold_white: led_cw_out
+  warm_white: led_ww_out
+  cold_white_color_temperature: 6000K
+  warm_white_color_temperature: 3000K
+  constant_brightness: true
+  default_transition_length: 500ms
+  restore_mode: RESTORE_DEFAULT_OFF
+  on_state:
+  - script.execute: power_update
+  - if:
+      condition:
+        and:
+        - lambda: "return !id(cwww_light).remote_values.is_on();"
+        - lambda: "return id(cwww_light).current_values.is_on();"
+      then:
+      - lambda: "id(control_mode) = false;"
+      - light.control:
+          id: pixels
+          effect: None
+      - light.control:
+          id: pixels
+          state: on
+          brightness: 15%
+          red: 0%
+          green: 0%
+          blue: 100%
+          transition_length: 0ms
+      - script.execute: delay_reset_pixels_100ms
+  - if:
+      condition:
+        and:
+        - lambda: "return id(cwww_light).remote_values.is_on();"
+        - or:
+          - lambda: "return !id(cwww_light).current_values.is_on();"
+          - and:
+            - lambda: "return id(cwww_light).is_transformer_active();"
+            - lambda: |-
+                return (
+                  id(cwww_light).remote_values.get_brightness()
+                  - id(cwww_light).current_values.get_brightness()
+                ) > 0.1;
+      then:
+      - light.control:
+          id: pixels
+          state: on
+          brightness: 15%
+          red: 0%
+          green: 100%
+          blue: 0%
+          transition_length: 0ms
+      - script.execute: delay_reset_pixels_100ms
+- id: pixels
+  name: "Neopixels"
+  internal: true
+  platform: neopixelbus
+  variant: SK6812
+  type: GRB
+  pin: GPIO20
+  method:
+    type: esp32_rmt
+    channel: 0
+  num_leds: 2
+  default_transition_length: 250ms
+  restore_mode: ALWAYS_OFF
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+  - addressable_lambda:
+      name: "Color Temperature Select"
+      update_interval: 10ms
+      lambda: |-
+        it[0] = Color(255, 192, 255);
+        it[1] = Color(255, 192, 0);
+  - addressable_lambda:
+      name: "Brighter"
+      update_interval: 10ms
+      lambda: |-
+        it[0] = Color(0, 255, 0);
+        it[1] = Color(0, 0, 0);
+  - addressable_lambda:
+      name: "Dimmer"
+      update_interval: 10ms
+      lambda: |-
+        it[0] = Color(0, 0, 0);
+        it[1] = Color(0, 0, 255);
+
+switch:
+- id: rotary_encoder_invert
+  platform: template
+  name: "Invert Rotary Encoder"
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: rotary_encoder_invert
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: rotary_encoder_invert
+      state: off
+
+globals:
+- id: control_mode
+  type: bool
+  restore_value: no
+  initial_value: "false"
+
+script:
+- id: light_control
+  parameters:
+    clockwise: bool
+  mode: single
+  then:
+  - if:
+      condition:
+        light.is_on: cwww_light
+      then:
+      - if:
+          condition:
+            lambda: 'return id(control_mode);'
+          then:
+          - light.control:
+              id: cwww_light
+              color_temperature: !lambda |-
+                return (
+                  id(cwww_light).remote_values.get_color_temperature()
+                  + 8.0 * (clockwise ? -1 : 1)
+                );
+              transition_length: 50ms
+          - script.execute: delay_reset_control_mode
+          else:
+          - light.dim_relative:
+              id: cwww_light
+              relative_brightness: !lambda |-
+                return .025 * (clockwise ? 1 : -1);
+              transition_length: 25ms
+              brightness_limits:
+                min_brightness: 20%
+          - if:
+              condition:
+                lambda: 'return clockwise;'
+              then:
+              - light.control:
+                  id: pixels
+                  brightness: 15%
+                  effect: "Brighter"
+                  state: on
+              - script.execute: delay_reset_pixels_10ms
+              else:
+              - light.control:
+                  id: pixels
+                  brightness: 15%
+                  effect: "Dimmer"
+                  state: on
+              - script.execute: delay_reset_pixels_10ms
+- id: delay_reset_pixels_10ms
+  mode: restart
+  then:
+  - delay: 100ms
+  - light.turn_off:
+      id: pixels
+      transition_length: 10ms
+- id: delay_reset_pixels_100ms
+  mode: restart
+  then:
+  - delay: 100ms
+  - light.turn_off:
+      id: pixels
+      transition_length: 100ms
+- id: set_control_mode
+  parameters:
+    new_mode: bool
+  mode: single
+  then:
+  - if:
+      condition:
+        or:
+        - light.is_on: cwww_light
+        - lambda: "return new_mode == false;"
+      then:
+      - lambda: "id(control_mode) = new_mode;"
+  - if:
+      condition:
+        lambda: 'return id(control_mode);'
+      then:
+      - light.turn_on:
+          id: pixels
+          brightness: 1%
+          effect: "Color Temperature Select"
+      - light.control:
+          id: pixels
+          brightness: 20%
+      - script.execute: delay_reset_control_mode
+      else:
+      - light.turn_off: pixels
+- id: delay_reset_control_mode
+  mode: restart
+  then:
+  - delay: 10s
+  - script.execute:
+      id: set_control_mode
+      new_mode: false
+- id: power_update
+  mode: restart
+  then:
+  - delay: 500ms
+  - component.update: power
