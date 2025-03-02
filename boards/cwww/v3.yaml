@@ -198,13 +198,13 @@ light:
 - id: ext_pixels
   name: "External Neopixels"
   platform: neopixelbus
-  variant: SK6812
-  type: GRBW
+  variant: WS2811
+  type: GRB
   pin: GPIO1
   method:
     type: esp32_rmt
     channel: 1
-  num_leds: 2
+  num_leds: 50
   effects:
   - addressable_rainbow:
       name: "Rainbow"
