@@ -9,7 +9,7 @@ on:
 
 jobs:
   Test:
-    name: pre-commit
+    name: ESPHome configuration
     runs-on: ubuntu-latest
     steps:
     - name: 💾 Check out repository
@@ -22,12 +22,15 @@ jobs:
         key: "pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml')
           }}"
 
-    - name: ✨ Install pre-commit
+    - name: ✨ Install test dependencies
       shell: bash
-      run: python3 -m pip install pre-commit
+      run: python3 -m pip install esphome pre-commit pytest
+
+    - name: 🧼 Lint
+      run: pre-commit run --all-files
 
     - name: 🔥 Test
-      run: pre-commit run --all-files
+      run: pytest -vv
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
