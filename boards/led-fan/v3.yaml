@@ -1,0 +1,363 @@
+substitutions:
+  device: "led-fan"
+  name: "LED & Fan Driver"
+
+packages:
+  base: !include ../../base/network-device.yaml
+  mcu: !include ../../mcu/esp32c3-arduino.yaml
+  pwm_status_led: !include
+    file: ../../packages/pwm_status_led.yaml
+    vars:
+      pin: GPIO2
+
+spi: !remove
+
+switch:
+- id: rotary_encoder_1_invert
+  platform: template
+  name: "Invert Rotary Encoder 1"
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: rotary_encoder_1_invert
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: rotary_encoder_1_invert
+      state: off
+- id: rotary_encoder_2_invert
+  platform: template
+  name: "Invert Rotary Encoder 2"
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: rotary_encoder_2_invert
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: rotary_encoder_2_invert
+      state: off
+
+select:
+- id: rotary_encoder_1_device
+  name: "Rotary Encoder 1 Device"
+  platform: template
+  options:
+  - "Fan"
+  - "Light"
+  - "External Neopixels"
+  initial_option: "Fan"
+  entity_category: config
+  icon: "mdi:dip-switch"
+  update_interval: 1d
+  restore_value: true
+  set_action:
+  - lambda: "return id(rotary_encoder_1_device).publish_state(x);"
+- id: rotary_encoder_2_device
+  name: "Rotary Encoder 2 Device"
+  platform: template
+  options:
+  - "Fan"
+  - "Light"
+  - "External Neopixels"
+  initial_option: "Light"
+  entity_category: config
+  icon: "mdi:dip-switch"
+  update_interval: 1d
+  restore_value: true
+  set_action:
+  - lambda: "return id(rotary_encoder_2_device).publish_state(x);"
+
+sensor:
+- id: rotary_encoder_1
+  platform: rotary_encoder
+  name: "Rotary Encoder 1"
+  internal: true
+  min_value: 0
+  max_value: 1
+  pin_a:
+    number: GPIO6
+    mode:
+      input: true
+      pullup: true
+  pin_b:
+    number: GPIO5
+    mode:
+      input: true
+      pullup: true
+  publish_initial_value: true
+  on_clockwise:
+  - logger.log: "Rotary Encoder 1 Turned Clockwise"
+  - script.execute:
+      id: rotary_encoder_turn_action
+      device: !lambda "return id(rotary_encoder_1_device).state;"
+      clockwise: !lambda "return !id(rotary_encoder_1_invert).state;"
+  on_anticlockwise:
+  - logger.log: "Rotary Encoder 1 Turned Anticlockwise"
+  - script.execute:
+      id: rotary_encoder_turn_action
+      device: !lambda "return id(rotary_encoder_1_device).state;"
+      clockwise: !lambda "return id(rotary_encoder_1_invert).state;"
+- id: rotary_encoder_2
+  platform: rotary_encoder
+  name: "Rotary Encoder 2"
+  internal: true
+  min_value: 0
+  max_value: 1
+  pin_a:
+    number: GPIO20
+    mode:
+      input: true
+      pullup: true
+  pin_b:
+    number: GPIO10
+    mode:
+      input: true
+      pullup: true
+  publish_initial_value: true
+  on_clockwise:
+  - logger.log: "Rotary Encoder 2 Turned Clockwise"
+  - script.execute:
+      id: rotary_encoder_turn_action
+      device: !lambda "return id(rotary_encoder_2_device).state;"
+      clockwise: !lambda "return !id(rotary_encoder_2_invert).state;"
+  on_anticlockwise:
+  - logger.log: "Rotary Encoder 2 Turned Anticlockwise"
+  - script.execute:
+      id: rotary_encoder_turn_action
+      device: !lambda "return id(rotary_encoder_2_device).state;"
+      clockwise: !lambda "return id(rotary_encoder_2_invert).state;"
+
+binary_sensor:
+- platform: gpio
+  name: "Rotary Encoder 1 Button"
+  internal: true
+  pin:
+    number: GPIO7
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  on_click:
+    min_length: 50ms
+    max_length: 1s
+    then:
+    - script.execute:
+        id: rotary_encoder_button_click_action
+        device: !lambda "return id(rotary_encoder_1_device).state;"
+- platform: gpio
+  name: "Rotary Encoder 2 Button"
+  internal: true
+  pin:
+    number: GPIO21
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  on_click:
+    min_length: 50ms
+    max_length: 1s
+    then:
+    - script.execute:
+        id: rotary_encoder_button_click_action
+        device: !lambda "return id(rotary_encoder_2_device).state;"
+
+output:
+- id: fan_12v_output
+  platform: ledc
+  pin:
+    number: GPIO3
+    mode:
+      input: false
+      output: true
+      open_drain: false
+      pullup: false
+      pulldown: true
+- id: led_24v_output
+  platform: ledc
+  pin:
+    number: GPIO4
+
+light:
+- id: led_24v
+  platform: monochromatic
+  name: "LED strip"
+  output: led_24v_output
+  default_transition_length: 500ms
+  restore_mode: RESTORE_DEFAULT_OFF
+- id: onboard_neopixels
+  name: "Onboard Neopixels"
+  platform: neopixelbus
+  variant: SK6812
+  type: GRB
+  pin: GPIO1
+  method:
+    type: esp32_rmt
+    channel: 0
+  num_leds: 5
+  default_transition_length: 250ms
+  restore_mode: RESTORE_DEFAULT_OFF
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+      width: 10
+      speed: 50
+  - addressable_lambda:
+      name: "Red Alert"
+      update_interval: 10ms
+      lambda: |-
+        static long toggle_time = 0;
+        static bool state = false;
+        long now = millis();
+        if (initial_run) {
+          toggle_time = 0;
+          state = false;
+        }
+        if (now - toggle_time > 500) {
+          toggle_time = now;
+          state = !state;
+          if (state) {
+            it.all() = Color(255, 0, 0);
+          } else {
+            it.all() = Color::BLACK;
+          }
+        }
+  - addressable_lambda:
+      name: "Levels"
+      update_interval: 10ms
+      lambda: |-
+        int fan_pixel = 0;
+        int light_pixel = 2;
+        int external_neopixels_pixel = 4;
+        it.all() = Color::BLACK;
+        if (id(fan_12v).state) {
+          int bt = int(id(fan_12v).speed * 255 / 100);
+          if (bt >= 128) {
+            it[fan_pixel] = ESPColor(255 - bt * 2, 255, 0);
+          } else {
+            it[fan_pixel] = ESPColor(255, bt * 2, 0);
+          }
+        } else {
+          it[fan_pixel] = ESPColor(0, 0, 128);
+        }
+        if (id(led_24v).current_values.is_on()) {
+          int bt = int(id(led_24v).current_values.get_brightness() * 255);
+          if (bt >= 128) {
+            it[light_pixel] = ESPColor(255 - bt * 2, 255, 0);
+          } else {
+            it[light_pixel] = ESPColor(255, bt * 2, 0);
+          }
+        } else {
+          it[light_pixel] = ESPColor(0, 0, 128);
+        }
+        if (id(external_neopixels).current_values.is_on()) {
+          int bt = int(
+            id(external_neopixels).current_values.get_brightness() * 255
+          );
+          if (bt >= 128) {
+            it[external_neopixels_pixel] = ESPColor(255 - bt * 2, 255, 0);
+          } else {
+            it[external_neopixels_pixel] = ESPColor(255, bt * 2, 0);
+          }
+        } else {
+          it[external_neopixels_pixel] = ESPColor(0, 0, 128);
+        }
+
+- id: external_neopixels
+  name: "External Neopixels"
+  platform: neopixelbus
+  variant: SK6812
+  type: GRB
+  pin: GPIO0
+  method:
+    type: esp32_rmt
+    channel: 1
+  num_leds: 60
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+
+fan:
+- id: fan_12v
+  platform: speed
+  output: fan_12v_output
+  name: "Breadboard Fan"
+  restore_mode: RESTORE_DEFAULT_OFF
+
+script:
+- id: rotary_encoder_button_click_action
+  parameters:
+    device: string
+  mode: queued
+  then:
+  - lambda: |-
+      if (device == "Fan") {
+        id(fan_12v).toggle().perform();
+      } else if (device == "Light") {
+        id(led_24v).toggle().perform();
+      } else if (device == "External Neopixels") {
+        id(external_neopixels).toggle().perform();
+      }
+- id: rotary_encoder_turn_action
+  parameters:
+    device: string
+    clockwise: bool
+  mode: queued
+  then:
+  - lambda: |-
+      esphome::script::Script<bool>* control_script;
+      if (device == "Fan") {
+        control_script = id(fan_control);
+      } else if (device == "Light") {
+        control_script = id(light_control);
+      } else if (device == "External Neopixels") {
+        control_script = id(ext_pixels_control);
+      }
+      control_script->execute(clockwise);
+- id: light_control
+  parameters:
+    clockwise: bool
+  mode: single
+  then:
+  - if:
+      condition:
+        light.is_on: led_24v
+      then:
+      - light.dim_relative:
+          id: led_24v
+          relative_brightness: !lambda "return .025 * (clockwise ? 1 : -1);"
+          transition_length: 10ms
+          brightness_limits:
+            min_brightness: 5%
+- id: fan_control
+  parameters:
+    clockwise: bool
+  mode: single
+  then:
+  - if:
+      condition:
+        fan.is_on: fan_12v
+      then:
+      - fan.turn_on:
+          id: fan_12v
+          speed: !lambda |-
+            return min(100, max(10,
+              id(fan_12v).speed + 10 * (clockwise ? 1 : -1)
+            ));
+- id: ext_pixels_control
+  parameters:
+    clockwise: bool
+  mode: single
+  then:
+  - if:
+      condition:
+        light.is_on: external_neopixels
+      then:
+      - light.dim_relative:
+          id: external_neopixels
+          relative_brightness: !lambda "return .025 * (clockwise ? 1 : -1);"
+          transition_length: 10ms
+          brightness_limits:
+            min_brightness: 5%
