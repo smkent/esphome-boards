@@ -9,7 +9,7 @@ on:
 
 jobs:
   Test:
-    name: pre-commit
+    name: ESPHome configuration
     runs-on: ubuntu-latest
     steps:
     - name: 💾 Check out repository
