@@ -28,7 +28,9 @@ def test_render_board_config(board_file_path: Path, sandbox_dir: Path) -> None:
                     file=f,
                 )
             subprocess.run(
-                ["esphome", "config", str(device_temp_file)], cwd=sandbox_dir
+                ["esphome", "config", str(device_temp_file)],
+                cwd=sandbox_dir,
+                check=True,
             )
         finally:
             if device_temp_file.exists():
