@@ -1,0 +1,10 @@
+esphome:
+  name: esp-${device}
+  friendly_name: ${name}
+
+sensor:
+- id: sensor_uptime
+  platform: uptime
+  name: "Uptime"
+
+logger:

@@ -1,0 +1,40 @@
+substitutions:
+  wifi_ssid: !secret wifi_ssid
+  wifi_password: !secret wifi_password
+  wifi_domain: !secret wifi_domain
+  ota_password: !secret ota_password
+  api_encryption_key: !secret api_encryption_key
+  timezone: America/Los_Angeles
+
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_password}
+  domain: ${wifi_domain}
+
+sensor:
+- id: wifi_signal_db
+  platform: wifi_signal
+  name: "WiFi Signal Strength"
+  update_interval: 60s
+- id: wifi_signal_percent
+  platform: copy
+  source_id: wifi_signal_db
+  name: "WiFi Signal Percent"
+  filters:
+  - lambda: "return min(max(2 * (x + 100.0), 0.0), 100.0);"
+  unit_of_measurement: "%"
+  entity_category: "diagnostic"
+
+# Home Assistant API
+api:
+  encryption:
+    key: ${api_encryption_key}
+
+time:
+- platform: homeassistant
+  id: esptime
+  timezone: ${timezone}
+
+ota:
+- platform: esphome
+  password: ${ota_password}

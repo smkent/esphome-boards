@@ -1,0 +1,15 @@
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+spi:
+- id: spi_0
+  mosi_pin: GPIO6
+  clk_pin: GPIO4
+
+i2c:
+- id: i2c_0
+  sda: GPIO8
+  scl: GPIO9
+  scan: true
