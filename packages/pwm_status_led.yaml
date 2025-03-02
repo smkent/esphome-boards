@@ -1,0 +1,84 @@
+substitutions:
+  pin: GPIO0
+  inverted: "false"
+  steady_state: "off"
+
+esphome:
+  on_boot:
+    priority: 600
+    then:
+    - script.execute: led_status_script
+
+wifi:
+  on_connect:
+  - script.execute: led_status_script
+  on_disconnect:
+  - script.execute: led_status_script
+
+ota:
+  platform: esphome
+  on_begin:
+    then:
+    - light.control:
+        id: led_status_light
+        effect: "none"
+    - output.turn_on:
+        id: led_status
+
+api:
+  on_client_connected:
+  - script.execute: led_status_script
+  on_client_disconnected:
+  - script.execute: led_status_script
+
+script:
+- id: led_status_script
+  then:
+  - if:
+      condition:
+        api.connected:
+      then:
+      - light.control:
+          id: led_status_light
+          effect: None
+      - light.control:
+          id: led_status_light
+          state: ${steady_state}
+      else:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+          - light.control:
+              id: led_status_light
+              state: "on"
+              effect: "Slow Pulse"
+          else:
+          - light.control:
+              id: led_status_light
+              state: "on"
+              effect: "Pulse"
+
+output:
+- id: led_status
+  platform: ledc
+  pin:
+    number: ${pin}
+    inverted: ${inverted}
+
+light:
+- platform: monochromatic
+  id: led_status_light
+  output: led_status
+  internal: true
+  default_transition_length: 500ms
+  effects:
+  - pulse:
+      name: "Pulse"
+      transition_length: 400ms
+      update_interval: 400ms
+  - pulse:
+      name: "Slow Pulse"
+      transition_length: 800ms
+      update_interval: 800ms
+      min_brightness: 40%
