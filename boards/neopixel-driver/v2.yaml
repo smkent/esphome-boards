@@ -1,0 +1,155 @@
+substitutions:
+  device: "neopixel-driver"
+  name: "Neopixel Driver"
+
+packages:
+  base: !include ../../base/network-device.yaml
+  mcu: !include ../../mcu/esp32c3-arduino.yaml
+  pwm_status_led: !include
+    file: ../../packages/pwm_status_led.yaml
+    vars:
+      pin: GPIO2
+
+spi: !remove
+
+switch:
+- id: rotary_encoder_invert
+  platform: template
+  name: "Invert Rotary Encoder"
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: rotary_encoder_invert
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: rotary_encoder_invert
+      state: off
+- id: sw_gpio20
+  name: "GPIO20"
+  platform: gpio
+  pin: GPIO20
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+- id: sw_gpio21
+  name: "GPIO21"
+  platform: gpio
+  pin: GPIO21
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+
+light:
+- id: rgb_ch1
+  name: "Neopixels Channel 1"
+  platform: neopixelbus
+  variant: WS2811
+  type: GRB
+  pin: GPIO10
+  method:
+    type: esp32_rmt
+    channel: 0
+  num_leds: 100
+  restore_mode: RESTORE_DEFAULT_OFF
+  default_transition_length: 250ms
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+- id: rgb_ch2
+  name: "Neopixels Channel 2"
+  platform: neopixelbus
+  variant: WS2811
+  type: GRB
+  pin: GPIO4
+  method:
+    type: esp32_rmt
+    channel: 1
+  num_leds: 100
+  restore_mode: RESTORE_DEFAULT_OFF
+  default_transition_length: 250ms
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+binary_sensor:
+- id: external_rotary_encoder_button
+  name: "Rotary Encoder Button"
+  platform: gpio
+  internal: true
+  pin:
+    number: GPIO5
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  on_click:
+    min_length: 50ms
+    max_length: 1s
+    then:
+    - light.toggle: rgb_ch1
+    - light.toggle: rgb_ch2
+
+sensor:
+- id: external_rotary_encoder
+  name: "Rotary Encoder"
+  platform: rotary_encoder
+  internal: true
+  min_value: 0
+  max_value: 1
+  pin_a:
+    number: GPIO6
+    mode:
+      input: true
+      pullup: true
+  pin_b:
+    number: GPIO7
+    mode:
+      input: true
+      pullup: true
+  publish_initial_value: true
+  on_clockwise:
+  - logger.log: "Rotary Encoder Turned Clockwise"
+  - script.execute:
+      id: light_control
+      clockwise: !lambda "return !id(rotary_encoder_invert).state;"
+  on_anticlockwise:
+  - logger.log: "Rotary Encoder Turned Anticlockwise"
+  - script.execute:
+      id: light_control
+      clockwise: !lambda "return id(rotary_encoder_invert).state;"
+- platform: veml7700
+  address: 0x10
+  update_interval: 20s
+  ambient_light: "Ambient light"
+  full_spectrum: "Full spectrum"
+  infrared: "Infrared"
+  actual_gain:
+    name: "Actual gain"
+  actual_integration_time:
+    name: "Actual integration time"
+
+script:
+- id: light_control
+  parameters:
+    clockwise: bool
+  mode: single
+  then:
+  - if:
+      condition:
+        light.is_on: rgb_ch1
+      then:
+      - light.dim_relative:
+          id: rgb_ch1
+          relative_brightness: !lambda "return .025 * (clockwise ? 1 : -1);"
+          transition_length: 10ms
+          brightness_limits:
+            min_brightness: 2.5%
+  - if:
+      condition:
+        light.is_on: rgb_ch2
+      then:
+      - light.dim_relative:
+          id: rgb_ch2
+          relative_brightness: !lambda "return .025 * (clockwise ? 1 : -1);"
+          transition_length: 10ms
+          brightness_limits:
+            min_brightness: 2.5%
