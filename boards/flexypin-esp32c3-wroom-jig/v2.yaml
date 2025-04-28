@@ -1,0 +1,174 @@
+substitutions:
+  device: "flexypin-esp32c3-wroom-jig"
+  name: "ESP32-C3-WROOM-02 FlexyPin Jig"
+
+packages:
+  base: !include ../../base/network-device.yaml
+  mcu: !include ../../mcu/esp32c3-arduino.yaml
+  pwm_status_led: !include
+    file: ../../packages/pwm_status_led.yaml
+    vars:
+      pin: GPIO2
+      steady_state: "on"
+
+i2c: !remove
+
+spi: !remove
+
+esphome:
+  on_boot:
+    priority: 600
+    then:
+    - light.turn_on:
+        id: onboard_pixels
+        brightness: 50%
+    - light.turn_on:
+        id: gpio_partition_left
+        effect: "Cylon"
+    - light.turn_on:
+        id: gpio_partition_right
+        effect: "Pulse"
+
+output:
+- id: gpio0_out
+  platform: ledc
+  pin: GPIO0
+- id: gpio1_out
+  platform: ledc
+  pin: GPIO1
+- id: gpio3_out
+  platform: ledc
+  pin: GPIO3
+- id: gpio4_out
+  platform: gpio
+  pin: GPIO4
+- id: gpio5_out
+  platform: gpio
+  pin: GPIO5
+- id: gpio6_out
+  platform: gpio
+  pin: GPIO6
+- id: gpio7_out
+  platform: gpio
+  pin: GPIO7
+- id: gpio8_out
+  platform: gpio
+  pin: GPIO8
+- id: gpio9_out
+  platform: gpio
+  pin: GPIO9
+- id: gpio20_out
+  platform: ledc
+  pin: GPIO20
+- id: gpio21_out
+  platform: ledc
+  pin: GPIO21
+
+light:
+- id: onboard_pixels
+  name: "Onboard Neopixel"
+  platform: neopixelbus
+  variant: SK6812
+  type: RGBW
+  pin: GPIO10
+  method:
+    type: esp32_rmt
+    channel: 0
+  num_leds: 1
+  restore_mode: RESTORE_DEFAULT_OFF
+  default_transition_length: 250ms
+  effects:
+    addressable_rainbow:
+      name: "Rainbow"
+      width: 300
+      speed: 25
+- id: gpio_partition_left
+  name: "GPIO LEDs Left"
+  internal: true
+  platform: partition
+  segments:
+  - single_light_id: gpio4_led
+  - single_light_id: gpio5_led
+  - single_light_id: gpio6_led
+  - single_light_id: gpio7_led
+  - single_light_id: gpio8_led
+  - single_light_id: gpio9_led
+  effects:
+  - addressable_scan:
+      name: "Cylon"
+- id: gpio_partition_right
+  name: "GPIO LEDs Right"
+  internal: true
+  platform: partition
+  segments:
+  - single_light_id: gpio0_led
+  - single_light_id: gpio1_led
+  - single_light_id: gpio3_led
+  - single_light_id: gpio21_led
+  - single_light_id: gpio20_led
+  default_transition_length: 500ms
+  effects:
+  - addressable_scan:
+      name: "Cylon"
+  - pulse:
+      name: "Pulse"
+- id: gpio0_led
+  name: "GPIO0 LED"
+  internal: true
+  platform: monochromatic
+  output: gpio0_out
+  default_transition_length: 500ms
+- id: gpio1_led
+  name: "GPIO1 LED"
+  internal: true
+  platform: monochromatic
+  output: gpio1_out
+  default_transition_length: 500ms
+- id: gpio3_led
+  name: "GPIO3 LED"
+  internal: true
+  platform: monochromatic
+  output: gpio3_out
+  default_transition_length: 500ms
+- id: gpio4_led
+  name: "GPIO4 LED"
+  internal: true
+  platform: binary
+  output: gpio4_out
+- id: gpio5_led
+  name: "GPIO5 LED"
+  internal: true
+  platform: binary
+  output: gpio5_out
+- id: gpio6_led
+  name: "GPIO6 LED"
+  internal: true
+  platform: binary
+  output: gpio6_out
+- id: gpio7_led
+  name: "GPIO7 LED"
+  internal: true
+  platform: binary
+  output: gpio7_out
+- id: gpio8_led
+  name: "GPIO8 LED"
+  internal: true
+  platform: binary
+  output: gpio8_out
+- id: gpio9_led
+  name: "GPIO9 LED"
+  internal: true
+  platform: binary
+  output: gpio9_out
+- id: gpio20_led
+  name: "GPIO20 LED"
+  internal: true
+  platform: monochromatic
+  output: gpio20_out
+  default_transition_length: 500ms
+- id: gpio21_led
+  name: "GPIO21 LED"
+  internal: true
+  platform: monochromatic
+  output: gpio21_out
+  default_transition_length: 500ms
