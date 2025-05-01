@@ -1,0 +1,278 @@
+substitutions:
+  device: "rgb-driver"
+  name: "RGB Driver"
+
+packages:
+  base: !include ../../base/network-device.yaml
+  mcu: !include ../../mcu/esp32c3-arduino.yaml
+  pwm_status_led: !include
+    file: ../../packages/pwm_status_led.yaml
+    vars:
+      pin: GPIO2
+
+spi: !remove
+
+remote_receiver:
+  dump: all
+  pin:
+    number: GPIO3
+    inverted: true
+  rmt_channel: 2
+
+switch:
+- id: rotary_encoder_invert
+  platform: template
+  name: "Invert Rotary Encoder"
+  restore_mode: RESTORE_DEFAULT_OFF
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: rotary_encoder_invert
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: rotary_encoder_invert
+      state: off
+- id: onboard_rgb_enable
+  name: "Enable Onboard RGB LEDs"
+  platform: gpio
+  pin: GPIO0
+  restore_mode: RESTORE_DEFAULT_ON
+  entity_category: config
+
+light:
+- id: rgb_light
+  name: "RGB Lights"
+  internal: true
+  platform: neopixelbus
+  variant: WS2811
+  type: RGB
+  pin: GPIO4
+  method:
+    type: esp32_rmt
+    channel: 0
+  num_leds: 2
+  restore_mode: RESTORE_DEFAULT_OFF
+  default_transition_length: 500ms
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+- id: rgb_p1
+  name: "RGB Light 1"
+  platform: partition
+  segments:
+  - id: rgb_light
+    from: 0
+    to: 0
+  restore_mode: RESTORE_DEFAULT_OFF
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+  - random:
+      name: "Random"
+      transition_length: 500ms
+      update_interval: 2s
+- id: rgb_p2
+  name: "RGB Light 2"
+  platform: partition
+  segments:
+  - id: rgb_light
+    from: 1
+    to: 1
+  restore_mode: RESTORE_DEFAULT_OFF
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+  - random:
+      name: "Random"
+      transition_length: 500ms
+      update_interval: 2s
+
+binary_sensor:
+- id: external_rotary_encoder_button
+  name: "Rotary Encoder Button"
+  platform: gpio
+  internal: true
+  pin:
+    number: GPIO7
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  on_click:
+    min_length: 50ms
+    max_length: 1s
+    then:
+    - script.execute: rgb_toggle
+- id: gpio1
+  name: "Center Button"
+  internal: true
+  platform: gpio
+  pin:
+    number: 1
+    inverted: true
+  entity_category: diagnostic
+  on_click:
+    then:
+    - script.execute: rgb_toggle
+- id: gpio10
+  name: "GPIO10 Button"
+  internal: true
+  platform: gpio
+  pin:
+    number: 10
+    inverted: true
+  entity_category: diagnostic
+  on_click:
+    then:
+    - script.execute:
+        id: rgb_random_color
+        light: !lambda "return id(rgb_p1);"
+    - script.execute:
+        id: rgb_random_color
+        light: !lambda "return id(rgb_p2);"
+- id: gpio20
+  name: "GPIO20 Button"
+  internal: true
+  platform: gpio
+  pin:
+    number: 20
+    inverted: true
+  entity_category: diagnostic
+  on_click:
+    then:
+    - script.execute:
+        id: rgb_mode_cycle
+        light: !lambda "return id(rgb_p2);"
+- id: gpio21
+  name: "GPIO21 Button"
+  internal: true
+  platform: gpio
+  pin:
+    number: 21
+    inverted: true
+  entity_category: diagnostic
+  on_click:
+    then:
+    - script.execute:
+        id: rgb_mode_cycle
+        light: !lambda "return id(rgb_p1);"
+
+sensor:
+- id: power
+  platform: ina226
+  shunt_resistance: 0.02 ohm
+  update_interval: 60s
+  current:
+    id: power_current
+    name: "INA226 Current"
+  power:
+    id: power_watts
+    name: "INA226 Power"
+  bus_voltage:
+    id: power_voltage
+    name: "INA226 Bus Voltage"
+  shunt_voltage:
+    id: power_shunt_voltage
+    name: "INA226 Shunt Voltage"
+- id: external_rotary_encoder
+  name: "Rotary Encoder"
+  platform: rotary_encoder
+  internal: true
+  min_value: 0
+  max_value: 1
+  pin_a:
+    number: GPIO6
+    mode:
+      input: true
+      pullup: true
+  pin_b:
+    number: GPIO5
+    mode:
+      input: true
+      pullup: true
+  publish_initial_value: true
+  on_clockwise:
+  - logger.log: "Rotary Encoder Turned Clockwise"
+  - script.execute:
+      id: light_control
+      clockwise: !lambda "return !id(rotary_encoder_invert).state;"
+      step: 0.025
+  on_anticlockwise:
+  - logger.log: "Rotary Encoder Turned Anticlockwise"
+  - script.execute:
+      id: light_control
+      clockwise: !lambda "return id(rotary_encoder_invert).state;"
+      step: 0.025
+
+script:
+- id: rgb_toggle
+  mode: queued
+  then:
+  - if:
+      condition:
+        or:
+        - lambda: "return id(rgb_p1).remote_values.is_on();"
+        - lambda: "return id(rgb_p2).remote_values.is_on();"
+      then:
+      - light.turn_off: rgb_p1
+      - light.turn_off: rgb_p2
+      else:
+      - light.turn_on: rgb_p1
+      - light.turn_on: rgb_p2
+- id: rgb_mode_cycle
+  parameters:
+    light: "esphome::light::AddressableLightState*"
+  mode: single
+  then:
+  - lambda: |-
+      std::string current_effect = light->get_effect_name();
+      auto call = light->turn_on();
+      if (current_effect == "Rainbow") {
+        call.set_effect("Random");
+      } else if (current_effect == "Random") {
+        call.set_effect("None");
+      } else {
+        call.set_effect("Rainbow");
+      }
+      call.perform();
+- id: rgb_random_color
+  parameters:
+    light: "esphome::light::AddressableLightState*"
+  mode: single
+  then:
+  - lambda: |-
+      auto call = light->turn_on();
+      if (light->get_effect_name() != "None") {
+        call.set_effect("None");
+      }
+      call.set_red(random_float());
+      call.set_green(random_float());
+      call.set_blue(random_float());
+      call.perform();
+- id: light_control
+  parameters:
+    clockwise: bool
+    step: float
+  mode: single
+  then:
+  - lambda: "id(light_dim_relative)->execute(id(rgb_p1), clockwise, step);"
+  - lambda: "id(light_dim_relative)->execute(id(rgb_p2), clockwise, step);"
+- id: light_dim_relative
+  parameters:
+    light: "esphome::light::AddressableLightState*"
+    clockwise: bool
+    step: float
+  mode: single
+  then:
+  - lambda: |-
+      if (!light->remote_values.is_on()) {
+        return;
+      }
+      auto call = light->make_call();
+      float brightness;
+      light->remote_values.as_brightness(&brightness);
+      float add = step * (clockwise ? 1 : -1);
+      call.set_brightness(min(max(brightness + add, 0.025f), 1.0f));
+      call.set_transition_length(10);
+      call.perform();
