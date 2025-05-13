@@ -1,0 +1,379 @@
+substitutions:
+  device: "ir"
+  name: "IR Controller & Repeater"
+
+packages:
+  base: !include ../../base/network-device.yaml
+  mcu: !include ../../mcu/esp32c3.yaml
+  pwm_status_led: !include
+    file: ../../packages/pwm_status_led.yaml
+    vars:
+      pin: GPIO2
+
+spi: !remove
+
+external_components:
+- source: github://smkent/esphome@main
+  components: [remote_receiver]
+
+esphome:
+  on_boot:
+  - priority: 600
+    then:
+    - if:
+        condition:
+          light.is_off: ir_38khz
+        then:
+        - light.turn_on:
+            id: ir_38khz
+            brightness: 62%
+    - light.control:
+        id: onboard_rgb
+        state: on
+        brightness: 48%
+        effect: "Rainbow"
+    - delay: 1s
+    - light.turn_off:
+        id: onboard_rgb
+        transition_length: 500ms
+
+globals:
+- id: active_color
+  type: "Color"
+  initial_value: "Color::BLACK"
+  restore_value: false
+- id: tx_lock
+  type: bool
+  initial_value: "false"
+  restore_value: false
+- id: tx_q
+  type: "std::deque<esphome::button::Button*>"
+  restore_value: false
+- id: tx_q_total_items
+  type: int
+  initial_value: "0"
+  restore_value: false
+
+remote_receiver:
+- id: rx
+  pin:
+    number: GPIO20
+    inverted: false
+  rmt_symbols: 96
+  carrier_duty_percent: 25%
+  carrier_frequency: 25000Hz
+
+remote_transmitter:
+- id: tx
+  pin:
+    number: GPIO10
+    mode:
+      output: true
+      pulldown: true
+  rmt_symbols: 48
+  carrier_duty_percent: 20%
+  on_transmit:
+    then:
+    - globals.set:
+        id: tx_lock
+        value: "true"
+    - switch.turn_on: rx_tx_disable
+  on_complete:
+    then:
+    - script.execute: restore_rx_forward
+    - script.wait: restore_rx_forward
+    - globals.set:
+        id: tx_lock
+        value: "false"
+
+sn74hc595:
+- id: sn74hc595_hub
+  data_pin: GPIO21
+  clock_pin: GPIO6
+  latch_pin: GPIO5
+  sr_count: 2
+
+output:
+- id: ir_38khz_output
+  platform: ledc
+  pin: GPIO7
+  frequency: 38kHz
+  channel: 4
+- id: indicator_leds_output
+  platform: gpio
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 5
+- id: diagnostic_leds_output
+  platform: gpio
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 6
+- id: onboard_irm_enable_output
+  platform: gpio
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 7
+
+light:
+- id: ir_38khz
+  name: "RX 38kHz Duty Cycle"
+  platform: monochromatic
+  output: ir_38khz_output
+  default_transition_length: 500ms
+  entity_category: config
+  icon: "mdi:square-wave"
+  restore_mode: RESTORE_DEFAULT_OFF
+- id: indicator_leds
+  name: "Indicator LEDs"
+  platform: binary
+  output: indicator_leds_output
+  entity_category: config
+  icon: "mdi:led-off"
+  restore_mode: RESTORE_DEFAULT_ON
+- id: diagnostic_leds
+  name: "Diagnostic LEDs"
+  platform: binary
+  output: diagnostic_leds_output
+  entity_category: diagnostic
+  icon: "mdi:led-off"
+  restore_mode: RESTORE_DEFAULT_OFF
+- id: onboard_irm_enable
+  name: "Onboard IR Receiver Enable"
+  platform: binary
+  output: onboard_irm_enable_output
+  entity_category: config
+  icon: "mdi:signal-variant"
+  restore_mode: RESTORE_DEFAULT_ON
+- id: onboard_rgb
+  name: "Onboard RGB"
+  internal: true
+  platform: esp32_rmt_led_strip
+  chipset: SK6812
+  rgb_order: GRB
+  rmt_symbols: 48
+  pin: GPIO4
+  num_leds: 4
+  restore_mode: ALWAYS_OFF
+  default_transition_length: 100ms
+  effects:
+  - addressable_rainbow:
+      name: "Rainbow"
+      width: 10
+      speed: 50
+  - pulse:
+      name: "Pulse"
+      transition_length: 400ms
+      update_interval: 400ms
+      max_brightness: 50%
+
+switch:
+- id: rx_tx_enable_control
+  platform: template
+  name: "IR Repeater Enable"
+  entity_category: config
+  icon: "mdi:broadcast"
+  restore_mode: RESTORE_DEFAULT_ON
+  optimistic: true
+  turn_off_action:
+  - switch.turn_on: rx_tx_disable
+  turn_on_action:
+  - wait_until:
+      condition:
+      - lambda: "return id(tx_lock) == false && id(tx_q_total_items) == 0;"
+  - switch.turn_off: rx_tx_disable
+- id: rx_tx_disable
+  name: "IR Repeater Disable (Internal)"
+  platform: gpio
+  internal: true
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 0
+- id: rx1_invert
+  name: "RX1 Invert"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 1
+- id: rx2_invert
+  name: "RX2 Invert"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 2
+- id: rx3_invert
+  name: "RX3 Invert"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 3
+- id: rx4_invert
+  name: "RX4 Invert"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 4
+- id: tx1_ring_5v_enable
+  name: "TX1 Ring-5V Enable"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 9
+- id: tx2_ring_5v_enable
+  name: "TX2 Ring-5V Enable"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 10
+- id: tx3_ring_5v_enable
+  name: "TX3 Ring-5V Enable"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 11
+- id: tx4_ring_5v_enable
+  name: "TX4 Ring-5V Enable"
+  platform: gpio
+  entity_category: config
+  restore_mode: RESTORE_DEFAULT_OFF
+  pin:
+    sn74hc595: sn74hc595_hub
+    number: 12
+
+script:
+- id: restore_rx_forward
+  mode: restart
+  then:
+  - if:
+      condition:
+      - lambda: "return id(tx_q_total_items) == 0;"
+      then:
+      - delay: 500ms
+      - if:
+          condition:
+            and:
+            - switch.is_on: rx_tx_enable_control
+            - lambda: "return id(tx_q_total_items) == 0;"
+          then:
+          - switch.turn_off: rx_tx_disable
+
+- id: onboard_rgb_apply_active_color
+  parameters:
+    brightness: double
+    transition_length: int
+  mode: single
+  then:
+  - if:
+      condition:
+      - lambda: |-
+          auto color = id(active_color);
+          return (color.r == 0 && color.g == 0 && color.b == 0);
+      then:
+      - light.turn_off: onboard_rgb
+      else:
+      - light.control:
+          id: onboard_rgb
+          state: on
+          brightness: !lambda "return brightness;"
+          red: !lambda "return float(id(active_color).r / 255);"
+          green: !lambda "return float(id(active_color).g / 255);"
+          blue: !lambda "return float(id(active_color).b / 255);"
+          white: 0%
+          transition_length: !lambda "return transition_length;"
+
+- id: onboard_rgb_show_progress
+  mode: single
+  then:
+  - lambda: |-
+      if (!id(onboard_rgb).remote_values.get_state()) {
+        return;
+      }
+      auto it = ((AddressableLight*)id(onboard_rgb).get_output());
+      double percent = (
+        static_cast<double>(id(tx_q_total_items) - id(tx_q).size() + 1)
+        / static_cast<double>(id(tx_q_total_items))
+      );
+      Color color = id(active_color);
+      int on_leds = max(1, static_cast<int>(round(percent * it->size())));
+      for (int i = 0; i < it->size(); i++) {
+        if (i == on_leds - 1) {
+          (*it)[i] = color;
+        } else if (i < on_leds) {
+          (*it)[i] = color.fade_to_black(125);
+        } else {
+          (*it)[i] = Color::BLACK;
+        }
+      }
+      it->schedule_show();
+
+- id: tx_run
+  parameters:
+    script: "esphome::script::Script<>*"
+  mode: queued
+  then:
+  - lambda: "script->execute();"
+  - if:
+      condition:
+      - lambda: "return !id(tx_q).empty();"
+      then:
+      - light.control:
+          id: onboard_rgb
+          state: off
+          transition_length: 100ms
+      - delay: 100ms
+      - script.execute:
+          id: onboard_rgb_apply_active_color
+          brightness: "0.48"
+          transition_length: "0"
+      - globals.set:
+          id: tx_q_total_items
+          value: !lambda "return id(tx_q).size();"
+      - script.execute: tx_run_queue
+      - script.wait: tx_run_queue
+      - delay: 10ms
+  - script.execute:
+      id: onboard_rgb_apply_active_color
+      brightness: "0.25"
+      transition_length: "1000"
+
+- id: tx_run_queue
+  mode: single
+  then:
+  - while:
+      condition:
+        lambda: "return !id(tx_q).empty();"
+      then:
+      - if:
+          condition:
+            light.is_on: onboard_rgb
+          then:
+          - script.execute: onboard_rgb_show_progress
+          - delay: 10ms
+      - lambda: |-
+          auto button = id(tx_q).front();
+          id(tx_q).pop_front();
+          button->press();
+      - if:
+          condition:
+            lambda: "return !id(tx_q).empty();"
+          then:
+          - delay: 3s
+  - globals.set:
+      id: tx_q_total_items
+      value: "0"
+  - script.execute: restore_rx_forward
