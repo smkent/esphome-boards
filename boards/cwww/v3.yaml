@@ -313,12 +313,55 @@ switch:
   - switch.template.publish:
       id: sun_cwww_enable
       state: off
+- id: auto_onoff_enable
+  platform: template
+  name: "Automatic On/Off Time"
+  restore_mode: RESTORE_DEFAULT_ON
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: auto_onoff_enable
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: auto_onoff_enable
+      state: off
 
 globals:
 - id: control_mode
   type: bool
   restore_value: no
   initial_value: "false"
+
+datetime:
+- id: auto_on_time
+  name: "Turn-On Time"
+  entity_category: config
+  platform: template
+  type: time
+  optimistic: yes
+  initial_value: "07:00:00"
+  restore_value: true
+  on_time:
+  - if:
+      condition:
+        switch.is_on: auto_onoff_enable
+      then:
+      - light.turn_on: cwww_light
+- id: auto_off_time
+  name: "Turn-Off Time"
+  entity_category: config
+  platform: template
+  type: time
+  optimistic: yes
+  initial_value: "01:00:00"
+  restore_value: true
+  on_time:
+  - if:
+      condition:
+        switch.is_on: auto_onoff_enable
+      then:
+      - light.turn_off: cwww_light
 
 script:
 - id: light_control
