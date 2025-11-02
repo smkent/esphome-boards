@@ -1,0 +1,29 @@
+sun:
+  id: sol
+  latitude: !secret latitude
+  longitude: !secret longitude
+
+text_sensor:
+- id: sun_next_sunrise
+  name: "Next Sunrise"
+  platform: sun
+  type: sunrise
+- id: sun_next_sunset
+  name: "Next Sunset"
+  platform: sun
+  type: sunset
+- id: sun_state
+  name: "Sun State"
+  platform: template
+  update_interval: never
+  icon: mdi:weather-sunny
+
+sensor:
+- id: sun_elevation
+  name: "Sun Elevation"
+  platform: sun
+  type: elevation
+- id: sun_azimuth
+  name: "Sun Azimuth"
+  platform: sun
+  type: azimuth

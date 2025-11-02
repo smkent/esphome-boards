@@ -9,6 +9,7 @@ packages:
     file: ../../packages/pwm_status_led.yaml
     vars:
       pin: GPIO2
+  sun: !include ../../packages/sun.yaml
 
 spi: !remove
 
@@ -56,6 +57,59 @@ sensor:
   shunt_voltage:
     id: power_shunt_voltage
     name: "INA226 Shunt Voltage"
+- id: sun_based_color_temperature_percentage
+  name: "Color Temperature Percentage"
+  internal: true
+  platform: template
+  update_interval: 60s
+  unit_of_measurement: '%'
+  state_class: measurement
+  lambda: |-
+    auto now = id(esptime).now();
+    if (!now.is_valid()) {
+      return {};
+    }
+    auto d0 = now;
+    d0.hour = d0.minute = d0.second = 0;
+    d0.recalc_timestamp_local();
+    auto sunrise = id(sol)->sunrise(d0, -0.83333).value().timestamp;
+    auto sunset = id(sol)->sunset(d0, -0.83333).value().timestamp;
+    int32_t seconds_until_sunset = sunset - now.timestamp;
+    int32_t seconds_after_sunrise = now.timestamp - sunrise;
+    int32_t solar_day_seconds = sunset - sunrise;
+    float denominator = (float) solar_day_seconds / 4;
+    float proportion = 0;
+    if (id(sol)->is_above_horizon()) {
+      if (seconds_after_sunrise > 0 && seconds_after_sunrise < denominator) {
+        id(sun_state).publish_state("Rising");
+        proportion = (float) seconds_after_sunrise / denominator;
+      } else if (seconds_until_sunset > 0 && seconds_until_sunset < denominator) {
+        id(sun_state).publish_state("Setting");
+        proportion = (float) seconds_until_sunset / denominator;
+      } else {
+        id(sun_state).publish_state("Daylight");
+        proportion = 1;
+      }
+    } else {
+      id(sun_state).publish_state("Night");
+      proportion = 0;
+    }
+    return proportion * 100;
+  on_value:
+  - lambda: |-
+      if (!id(sun_cwww_enable).state || !id(cwww_light).remote_values.is_on()) {
+        return;
+      }
+      auto tt = id(cwww_light)->get_traits();
+      auto current_mireds = id(cwww_light).remote_values.get_color_temperature();
+      auto mireds = tt.get_max_mireds() - (tt.get_max_mireds() - tt.get_min_mireds()) * (x / 100);
+      if (abs(current_mireds - mireds) < 0.01) {
+        return;
+      }
+      auto call = id(cwww_light).turn_on();
+      call.set_color_temperature_if_supported(mireds);
+      call.perform();
+
 
 binary_sensor:
 - platform: gpio
@@ -101,6 +155,11 @@ light:
   restore_mode: RESTORE_DEFAULT_OFF
   on_state:
   - script.execute: power_update
+  - if:
+      condition:
+      - lambda: "return !id(cwww_light).remote_values.is_on();"
+      then:
+      - component.update: sun_based_color_temperature_percentage
   - if:
       condition:
         and:
@@ -241,6 +300,19 @@ switch:
   - switch.template.publish:
       id: rotary_encoder_invert
       state: off
+- id: sun_cwww_enable
+  platform: template
+  name: "Sun-Based Color Temperature"
+  restore_mode: RESTORE_DEFAULT_ON
+  entity_category: config
+  turn_on_action:
+  - switch.template.publish:
+      id: sun_cwww_enable
+      state: on
+  turn_off_action:
+  - switch.template.publish:
+      id: sun_cwww_enable
+      state: off
 
 globals:
 - id: control_mode
@@ -270,6 +342,9 @@ script:
                   + 8.0 * (clockwise ? -1 : 1)
                 );
               transition_length: 50ms
+          - switch.template.publish:
+              id: sun_cwww_enable
+              state: off
           - script.execute: delay_reset_control_mode
           else:
           - light.dim_relative:
