@@ -12,10 +12,6 @@ packages:
 
 spi: !remove
 
-external_components:
-- source: github://smkent/esphome@main
-  components: [remote_receiver]
-
 esphome:
   on_boot:
   - priority: 600
