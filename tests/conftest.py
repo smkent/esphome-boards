@@ -12,6 +12,8 @@ wifi_password: deadbeef
 wifi_domain: .local
 api_encryption_key: ZGVhZGJlZWZkZWFkYmVlZmRlYWRiZWVmZGVhZGJlZQo=
 ota_password: deadbeefdeadbeef
+latitude: 51.4921513°
+longitude: -0.19297°
 """
 
 
