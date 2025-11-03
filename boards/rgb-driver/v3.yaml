@@ -17,7 +17,6 @@ remote_receiver:
   pin:
     number: GPIO3
     inverted: true
-  rmt_channel: 2
 
 switch:
 - id: rotary_encoder_invert
